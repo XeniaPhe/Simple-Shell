@@ -12,7 +12,8 @@ in the next command line; separate it into distinct arguments (using blanks as
 delimiters), and set the args array entries to point to the beginning of what
 will become null-terminated, C-style strings. */
 
-//void executeCommand(char* args[]);
+void executeCommand(char* args[]);
+int exists(char* directory, char* program);
 
 char *readinput(FILE* fp, size_t size){
 //The size is extended by the input with the value of the provisional
@@ -122,7 +123,7 @@ int main(void)
         printf("nutshell>> ");
         /*setup() calls exit() when Control-D is entered */
         setup(inputBuffer, args, &background);
-                       
+        executeCommand(args);
         /** the steps are:
         (1) fork a child process using fork()
         (2) the child process will invoke execv()
@@ -132,52 +133,44 @@ int main(void)
 }
 
 
+void executeCommand(char* args[]){
+    char* program = args[0];
 
-// void executeCommand(char* args[]){
-//     char* program = args[0];
+    if(program == NULL)
+        return;
 
-//     if(program == NULL)
-//         return;
+    //note :creating strings as char pointers inside a function is bad
 
-//     //note :creating strings as char pointers inside a function is bad
+    char* path = getenv("PATH");
+    char* programPath;
 
-//     char* path = getenv("PATH");
-//     char* programPath;
+    char* token = strtok(path,":");
 
-//     char* token = strtok(path,":");
+    do
+    {
+        //printf("%s\n",token);
+        if(exists(token,program)){
+            printf("Fucking exists!!!");
+        }
 
-//     do
-//     {
-//         printf("%s\n",token);
-//         #pragma region 
-//         // DIR *d;
-//         // struct dirent *dir;
-//         // d = opendir(token);
-
-//         // if(d == NULL){
-//         //     fprintf(STDERR_FILENO,"Error finding the command!");
-//         //     return;
-//         // }
-
-//         // while ((dir = readdir(d)) != NULL){
-//         //     if(strcmp(dir->d_name,program) == 0){
-//         //         // strcpy(programPath,token);
-//         //         // strcat(programPath,'/');
-//         //         // strcat(programPath,program);
-
-//         //         printf("lol");
-//         //         break;
-//         //     }
-//         // }
-
-//         // closedir(d);
-//         #pragma endregion
-
-
-//     } while ((token = strtok(NULL,":")) != NULL);
+    } while ((token = strtok(NULL,":")) != NULL);
     
-//     if(programPath == NULL)
-//         fprintf(STDERR_FILENO,"Command not found!");
-//     //else
-//         //printf("%s",programPath);
-// }
+    if(programPath == NULL)
+        fprintf(stdin,"Command not found!");
+    //else
+        //printf("%s",programPath);
+}
+
+int exists(char* directory, char* program){
+    DIR *d;
+    struct dirent *dir;
+    d = opendir(directory);
+    if(d == NULL)
+        return 0;
+    while ((dir = readdir(d)) != NULL)
+        if(strcmp(dir->d_name,program) == 0)
+            return 1;
+
+    closedir(d);
+    return 0;
+}
