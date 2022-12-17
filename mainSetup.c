@@ -1,13 +1,41 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <errno.h>
- 
+#include <string.h>
+#include <stdlib.h>
+#include <dirent.h>
+
 #define MAX_LINE 80 /* 80 chars per line, per command, should be enough. */
  
 /* The setup function below will not return any value, but it will just: read
 in the next command line; separate it into distinct arguments (using blanks as
 delimiters), and set the args array entries to point to the beginning of what
 will become null-terminated, C-style strings. */
+
+void executeCommand(char* args[]);
+void setup(char inputBuffer[], char *args[],int *background);
+int exists(const char* directory, char* program);
+ 
+int main(void)
+{
+            char inputBuffer[MAX_LINE]; /*buffer to hold command entered */
+            int background; /* equals 1 if a command is followed by '&' */
+            char *args[MAX_LINE/2 + 1]; /*command line arguments */
+            while (1){
+                        background = 0;
+                        printf("myshell: ");
+                        /*setup() calls exit() when Control-D is entered */
+                        setup(inputBuffer, args, &background);
+
+                        executeCommand(args);
+                       
+                        /** the steps are:
+                        (1) fork a child process using fork()
+                        (2) the child process will invoke execv()
+						(3) if background == 0, the parent will wait,
+                        otherwise it will invoke the setup() function again. */
+            }
+}
 
 void setup(char inputBuffer[], char *args[],int *background)
 {
@@ -75,24 +103,55 @@ void setup(char inputBuffer[], char *args[],int *background)
      args[ct] = NULL; /* just in case the input line was > 80 */
 
 	for (i = 0; i <= ct; i++)
-		printf("args %d = %s\n",i,args[i]);
+	    printf("args %d = %s\n",i,args[i]);
+    
 } /* end of setup routine */
- 
-int main(void)
-{
-            char inputBuffer[MAX_LINE]; /*buffer to hold command entered */
-            int background; /* equals 1 if a command is followed by '&' */
-            char *args[MAX_LINE/2 + 1]; /*command line arguments */
-            while (1){
-                        background = 0;
-                        printf("myshell: ");
-                        /*setup() calls exit() when Control-D is entered */
-                        setup(inputBuffer, args, &background);
-                       
-                        /** the steps are:
-                        (1) fork a child process using fork()
-                        (2) the child process will invoke execv()
-						(3) if background == 0, the parent will wait,
-                        otherwise it will invoke the setup() function again. */
-            }
+
+void executeCommand(char* args[]){
+    char* programName = args[0];
+
+    if(programName == NULL)
+        return;
+
+    //note :creating strings as char pointers inside a function is bad
+
+    char* path = getenv("PATH");
+    char* programPath;
+    char* token = strtok(path,":");
+
+    while(token != NULL){
+        //search the program name in the token
+        //exit loop if found
+
+        printf("%s",token);
+        token = strtok(NULL,":");
+
+        if(exists(token,programName)){
+            //programPath = strcat()
+        }
+    }
+    
+    if(programPath == NULL)
+        fprintf(STDERR_FILENO,"Command not found!");
+    else
+        printf("%s",programPath);
+}
+
+int exists(const char* directory, char* program){
+    printf("%s",directory);
+
+    DIR *d;
+    struct dirent *dir;
+    d = opendir(directory);
+
+    if(d == NULL)
+        return 0;
+
+    while ((dir = readdir(d)) != NULL)
+        if(strcmp(dir->d_name,program) == 0)
+            return 1;
+
+    closedir(d);
+
+    return 0;
 }
