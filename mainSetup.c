@@ -14,7 +14,7 @@ will become null-terminated, C-style strings. */
 
 void executeCommand(char* args[]);
 void setup(char inputBuffer[], char *args[],int *background);
-int exists(const char* directory, char* program);
+int exists(char* directory, char* program);
  
 int main(void)
 {
@@ -137,7 +137,7 @@ void executeCommand(char* args[]){
         printf("%s",programPath);
 }
 
-int exists(const char* directory, char* program){
+int exists(char* directory, char* program){
     printf("%s",directory);
 
     DIR *d;
