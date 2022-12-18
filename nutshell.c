@@ -8,7 +8,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
+#include <signal.h>
 
 #define MAX_LINE 80
 
@@ -18,6 +18,7 @@ void executeCommand(char *args[],int background);
 int exists(char* directory, char *program);
 void exec_history(int index);
 void update_history(char* inputBuffer, int length);
+void sighandler(int sig_num);
 
 struct history
 {
@@ -25,16 +26,29 @@ struct history
     int counter;
 } history;
 
+pid_t foregroundProcess = -1;
+
 int main(void){
+    signal(SIGTSTP, sighandler);
     char *inputBuffer;
     char *args[MAX_LINE/2 + 1];
 
     while (1){
         printf("nutshell>> ");
         int length = readinput(stdin,MAX_LINE,&inputBuffer);
+
+        if(length == 0)
+            exit(0);
+
+        if(strncmp(inputBuffer,"\n",1) == 0){
+            free(inputBuffer);
+            continue;
+        }
+        
         update_history(inputBuffer, length);
         int background = parseinput(inputBuffer,length ,args);
         executeCommand(args,background);
+
         free(inputBuffer);
     }
 }
@@ -76,15 +90,7 @@ int parseinput(char *input,int length ,char *args[]){
     ct = 0;
     bg = 0;
 
-    /* 0 is the system predefined file descriptor for stdin (standard input),
-       which is the user's screen in this case. inputBuffer by itself is the
-       same as &inputBuffer[0], i.e. the starting address of where to store
-       the command that is read, and length holds the number of characters
-       read in. inputBuffer is not a null terminated C-string. */
-
     start = -1;
-    if (length == 0)
-        exit(0);            /* ^d was entered, end of user command stream */
 
     /* the signal interrupted the read system call */
     /* if the process is in the read() system call, read returns -1
@@ -206,7 +212,11 @@ void executeCommand(char* args[], int background){
 
     if(background){
         printf("[%d]\n",childpid);
+        foregroundProcess = -1;
         options |= WNOHANG;
+    }
+    else{
+        foregroundProcess = childpid;
     }
 
     waitpid(childpid,NULL,options);
@@ -252,10 +262,20 @@ void exec_history(int index){
     executeCommand(args,background);
 }
 
-void update_history(char* inputBuffer, int length){
+void update_history(char* inputBuffer, int length){    
     int index = (++history.counter) % 10;
     free(history.log[index]);
     char* copy = (char*)malloc(sizeof(char) * length);
     strcpy(copy,inputBuffer);
     history.log[index] = copy;
+}
+
+void sighandler(int sig_num)
+{
+    signal(SIGTSTP, sighandler);
+
+    if(foregroundProcess == -1)
+        return;
+    
+    kill(foregroundProcess,SIGKILL);
 }
