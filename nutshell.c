@@ -12,13 +12,14 @@
 
 #define MAX_LINE 80
 
-int readinput(FILE *fp, size_t size,char **input);
-int parseinput(char *input,int length ,char *args[]);
-void executeCommand(char *args[],int background);
+int read_input(FILE *fp, size_t size,char **input);
+int parse_input(char *input,int length ,char *args[]);
+void execute_command(char *args[],int background);
 int exists(char* directory, char *program);
 void exec_history(int index);
 void update_history(char* inputBuffer, int length);
 void sighandler(int sig_num);
+bg_process* find_process(pid_t process);
 
 struct history
 {
@@ -26,6 +27,13 @@ struct history
     int counter;
 } history;
 
+struct bg_process
+{
+    bg_process* next;
+    pid_t pid;
+} typedef bg_process;
+
+bg_process* head = NULL;
 pid_t foregroundProcess = -1;
 
 int main(void){
@@ -35,7 +43,7 @@ int main(void){
 
     while (1){
         printf("nutshell>> ");
-        int length = readinput(stdin,MAX_LINE,&inputBuffer);
+        int length = read_input(stdin,MAX_LINE,&inputBuffer);
 
         if(length == 0)
             exit(0);
@@ -46,14 +54,14 @@ int main(void){
         }
         
         update_history(inputBuffer, length);
-        int background = parseinput(inputBuffer,length ,args);
-        executeCommand(args,background);
+        int background = parse_input(inputBuffer,length ,args);
+        execute_command(args,background);
 
         free(inputBuffer);
     }
 }
 
-int readinput(FILE *fp, size_t size,char **input){
+int read_input(FILE *fp, size_t size,char **input){
     int ch;
     size_t len = 0;
     *input = realloc(NULL, sizeof(char)*size);
@@ -81,7 +89,7 @@ int readinput(FILE *fp, size_t size,char **input){
     return len;
 }
 
-int parseinput(char *input,int length ,char *args[]){
+int parse_input(char *input,int length ,char *args[]){
     int i,      /* loop index for accessing inputBuffer array */
         start,  /* index where beginning of next command parameter is */
         ct,     /* index of where to place the next parameter into args[] */
@@ -142,7 +150,7 @@ int parseinput(char *input,int length ,char *args[]){
     return bg;
 }
 
-void executeCommand(char* args[], int background){
+void execute_command(char* args[], int background){
     char* program = args[0];
 
     if(program == NULL)
@@ -258,8 +266,8 @@ void exec_history(int index){
 
     int length = strlen(command);
     update_history(command, length);
-    int background = parseinput(command,length ,args);
-    executeCommand(args,background);
+    int background = parse_input(command,length ,args);
+    execute_command(args,background);
 }
 
 void update_history(char* inputBuffer, int length){    
@@ -270,12 +278,46 @@ void update_history(char* inputBuffer, int length){
     history.log[index] = copy;
 }
 
-void sighandler(int sig_num)
-{
+void sighandler(int sig_num){
     signal(SIGTSTP, sighandler);
 
     if(foregroundProcess == -1)
         return;
     
+    printf("lol\n");
     kill(foregroundProcess,SIGKILL);
+}
+
+bg_process* find_process(pid_t process){
+    bg_process* walker = head;
+
+    do
+    {
+        if(process == walker->pid)
+            return walker;
+    } while ((walker = walker->next) != NULL);
+    
+    return NULL;
+}
+
+void add_process(pid_t process){
+    bg_process* newprocess = (bg_process*)malloc(sizeof(bg_process));
+    newprocess->pid = process;
+
+    if(head == NULL){
+        head = newprocess;
+        return;
+    }
+
+    bg_process* walker = head;
+
+    while(walker->next != NULL)
+        walker = walker->next;
+
+    walker->next = newprocess;
+}
+
+int remove_process(pid_t process){
+    bg_process* 
+    ///a-b-c
 }
