@@ -18,8 +18,10 @@ void execute_command(char *args[],int background);
 int exists(char* directory, char *program);
 void exec_history(int index);
 void update_history(char* inputBuffer, int length);
-void sighandler(int sig_num);
-bg_process* find_process(pid_t process);
+void catch_fgkill(int sig_num);
+void add_process(pid_t process);
+int remove_process(pid_t process);
+void check_bgprocesses();
 
 struct history
 {
@@ -29,7 +31,7 @@ struct history
 
 struct bg_process
 {
-    bg_process* next;
+    struct bg_process* next;
     pid_t pid;
 } typedef bg_process;
 
@@ -37,14 +39,14 @@ bg_process* head = NULL;
 pid_t foregroundProcess = -1;
 
 int main(void){
-    signal(SIGTSTP, sighandler);
+    signal(SIGTSTP, catch_fgkill);
+
     char *inputBuffer;
     char *args[MAX_LINE/2 + 1];
 
     while (1){
         printf("nutshell>> ");
         int length = read_input(stdin,MAX_LINE,&inputBuffer);
-
         if(length == 0)
             exit(0);
 
@@ -55,8 +57,8 @@ int main(void){
         
         update_history(inputBuffer, length);
         int background = parse_input(inputBuffer,length ,args);
+        check_bgprocesses();
         execute_command(args,background);
-
         free(inputBuffer);
     }
 }
@@ -106,7 +108,7 @@ int parse_input(char *input,int length ,char *args[]){
     and disregard the -1 value */
 
     if ( (length < 0) && (errno != EINTR) ) {
-        perror("error reading the command");
+        fprintf(stderr,"error reading the command\n");
 	    exit(-1); /* terminate with error code of -1 */
     }
 
@@ -156,6 +158,15 @@ void execute_command(char* args[], int background){
     if(program == NULL)
         return;
 
+    if(strncmp(program,"exit",4) == 0){
+        if(head != NULL){
+            fprintf(stderr,"There is at least one background process still running!\n");
+            return;
+        }
+
+        exit(0);
+    }
+
     if(strncmp(program,"history",7) == 0){
         int number = -1;
 
@@ -163,7 +174,7 @@ void execute_command(char* args[], int background){
             char *numberArg = args[2];
             
             if(numberArg == NULL){
-                perror("You must input a number!");
+                fprintf(stderr,"You must input a number!\n");
                 return;
             }
 
@@ -174,7 +185,7 @@ void execute_command(char* args[], int background){
                 number = ch - '0';
             }
             else{
-                perror("Invalid index for history!");
+                fprintf(stderr,"Invalid index for history!\n");
                 return;
             }
         }
@@ -213,13 +224,15 @@ void execute_command(char* args[], int background){
 
     if(childpid == 0){
         execv(programPath,args);
-        perror("Error executing the program");
+        fprintf(stderr,"Error executing the program\n");
     }
 
     int options = 0;
 
     if(background){
         printf("[%d]\n",childpid);
+
+        add_process(childpid);
         foregroundProcess = -1;
         options |= WNOHANG;
     }
@@ -278,26 +291,13 @@ void update_history(char* inputBuffer, int length){
     history.log[index] = copy;
 }
 
-void sighandler(int sig_num){
-    signal(SIGTSTP, sighandler);
+void catch_fgkill(int sig_num){
+    signal(SIGTSTP, catch_fgkill);
 
     if(foregroundProcess == -1)
         return;
-    
-    printf("lol\n");
+
     kill(foregroundProcess,SIGKILL);
-}
-
-bg_process* find_process(pid_t process){
-    bg_process* walker = head;
-
-    do
-    {
-        if(process == walker->pid)
-            return walker;
-    } while ((walker = walker->next) != NULL);
-    
-    return NULL;
 }
 
 void add_process(pid_t process){
@@ -318,6 +318,39 @@ void add_process(pid_t process){
 }
 
 int remove_process(pid_t process){
-    bg_process* 
-    ///a-b-c
+    if(head == NULL)
+        return 0;
+
+    bg_process* prev = NULL;
+    bg_process* curr = head;
+    
+    while(curr->pid != process){
+        prev = curr;
+        curr = curr->next;
+
+        if(curr == NULL)
+            return 0;
+    }
+    
+    if(!prev)
+        head = curr->next;
+    else
+        prev->next = curr->next;
+
+    free(curr);
+    return 1;
+}
+
+void check_bgprocesses(){
+    bg_process* walker = head;
+
+    while(walker != NULL){
+        pid_t pid = walker->pid;
+        pid_t return_pid = waitpid(pid,NULL,WNOHANG);
+
+        walker = walker->next;
+
+        if(pid == return_pid)
+            remove_process(pid);
+    }
 }
