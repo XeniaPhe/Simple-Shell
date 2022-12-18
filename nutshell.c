@@ -1,13 +1,18 @@
+#include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#include <string.h>
-#include <stdlib.h>
 #include <dirent.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 
 #define MAX_LINE 80
 
-void executeCommand(char *args[]);
+void executeCommand(char *args[],int background);
 int exists(char* directory, char *program);
 
 int readinput(FILE *fp, size_t size,char **input){
@@ -37,6 +42,8 @@ int readinput(FILE *fp, size_t size,char **input){
     *input = realloc(*input, sizeof(*input)*len);
     return len;
 }
+
+char* history[10];
 
 void parseinput(char *input,int length ,char *args[],int *background)
 {
@@ -71,34 +78,34 @@ void parseinput(char *input,int length ,char *args[],int *background)
         switch (input[i]){
 	        case ' ':
 	        case '\t' : /* argument separators */
-		        if(start != -1){
-                    args[ct] = &input[start]; /* set up pointer */
-
-		            ct++;
-		        }
+		        if(start != -1)
+                    args[ct++] = &input[start]; /* set up pointer */
 
                 input[i] = '\0'; /* add a null char; make a C string */
 		        start = -1;
 		    break;
             case '\n': /* should be the final char examined */
-		        if (start != -1){
-                    args[ct] = &input[start];     
-
-		            ct++;
-		        }
+		        if (start != -1)
+                    args[ct++] = &input[start];     
 
                 input[i] = '\0';
                 args[ct] = NULL; /* no more arguments to this command */
 		    break;
 	        default : /* some other character */
-		        if (start == -1)
-		            start = i;
-
                 if (input[i] == '&'){
 		            *background  = 1;
+                    
+                    if(start == -1){
+                        args[ct] = NULL;
+                        break;
+                    }
 
-                    input[i-1] = '\0';
+                    input[i] = '\0'; //the solution might be related to this
 		        }
+
+                if (start == -1)
+		            start = i;
+            break;
 	    }
     }
 
@@ -116,18 +123,12 @@ int main(void)
         printf("nutshell>> ");
         int length = readinput(stdin,MAX_LINE,&inputBuffer);
         parseinput(inputBuffer,length ,args, &background);
-        executeCommand(args);
-
-        /** the steps are:
-        (1) fork a child process using fork()
-        (2) the child process will invoke execv()
-		(3) if background == 0, the parent will wait,
-        otherwise it will invoke the setup() function again. */
+        executeCommand(args,background);
     }
 }
 
 
-void executeCommand(char* args[]){
+void executeCommand(char* args[], int background){
     char* program = args[0];
 
     if(program == NULL)
@@ -139,22 +140,41 @@ void executeCommand(char* args[]){
 
     char* token = strtok(copy,":");
 
-    char* programPath;
-    
+    char* programPath = NULL;
+
     do
     {
         if(exists(token,program)){
-            printf("%s/%s\n",token,program);
+            programPath = token;
+            strcat(programPath,"/");
+            strcat(programPath,program);
+            break;
         }
 
     } while ((token = strtok(NULL,":")) != NULL);
 
     free(copy);
     
-    if(programPath == NULL)
-        fprintf(stdin,"Command not found!");
-    //else
-        //printf("%s",programPath);
+    if(programPath == NULL){
+        fprintf(stderr,"Command not found!\n");
+        return;
+    }
+
+    pid_t childpid = fork();
+
+    if(childpid == 0){
+        execv(programPath,args);
+        perror("Error executing the program");
+    }
+
+    int options = 0;
+
+    if(background){
+        printf("[%d]\n",childpid);
+        options |= WNOHANG;
+    }
+
+    waitpid(childpid,NULL,options);
 }
 
 int exists(char* directory, char* program){
