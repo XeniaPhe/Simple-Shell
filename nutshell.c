@@ -5,49 +5,46 @@
 #include <stdlib.h>
 #include <dirent.h>
 
-#define MAX_LINE 80 /* 80 chars per line, per command, should be enough. */
- 
-/* The setup function below will not return any value, but it will just: read
-in the next command line; separate it into distinct arguments (using blanks as
-delimiters), and set the args array entries to point to the beginning of what
-will become null-terminated, C-style strings. */
+#define MAX_LINE 80
 
-void executeCommand(char* args[]);
-int exists(char* directory, char* program);
+void executeCommand(char *args[]);
+int exists(char* directory, char *program);
 
-char *readinput(FILE* fp, size_t size){
-//The size is extended by the input with the value of the provisional
-    char *str;
+int readinput(FILE *fp, size_t size,char **input){
     int ch;
     size_t len = 0;
-    str = realloc(NULL, sizeof(*str)*size);//size is start size
-    if(!str)return str;
-    while(EOF!=(ch=fgetc(fp)) && ch != '\n'){
-        str[len++]=ch;
+    *input = realloc(NULL, sizeof(char)*size);
+
+    if(!*input)
+        return 0;
+
+    while((ch=fgetc(fp)) != EOF){
+        (*input)[len++]= ch;
+
         if(len==size){
-            str = realloc(str, sizeof(*str)*(size+=16));
-            if(!str)return str;
+            *input = realloc(*input, sizeof(char)*(size+=16));
+
+            if(!*input)
+                return len;
+        }
+
+        if(ch == '\n'){
+            (*input)[len++] = '\0';
+            break;
         }
     }
-    str[len++]='\0';
 
-    return realloc(str, sizeof(*str)*len);
+    *input = realloc(*input, sizeof(*input)*len);
+    return len;
 }
 
-void setup(char inputBuffer[], char *args[],int *background)
+void parseinput(char *input,int length ,char *args[],int *background)
 {
-    int length, /* # of characters in the command line */
-        i,      /* loop index for accessing inputBuffer array */
+    int i,      /* loop index for accessing inputBuffer array */
         start,  /* index where beginning of next command parameter is */
         ct;     /* index of where to place the next parameter into args[] */
     
     ct = 0;
-        
-    /* read what the user enters on the command line */
-    //length = read(STDIN_FILENO,inputBuffer,MAX_LINE);
-    inputBuffer = readinput(stdin,MAX_LINE);
-    length = strlen(inputBuffer) + 1;
-    strcat(inputBuffer,"\n");
 
     /* 0 is the system predefined file descriptor for stdin (standard input),
        which is the user's screen in this case. inputBuffer by itself is the
@@ -69,61 +66,58 @@ void setup(char inputBuffer[], char *args[],int *background)
 	    exit(-1); /* terminate with error code of -1 */
     }
 
-	//printf(" %s\n",inputBuffer);
-    for (i=0;i<length;i++){ /* examine every character in the inputBuffer */
+    for (i=0;i<length;i++){ /* examine every character in the input */
 
-        switch (inputBuffer[i]){
+        switch (input[i]){
 	        case ' ':
 	        case '\t' : /* argument separators */
 		        if(start != -1){
-                    args[ct] = &inputBuffer[start]; /* set up pointer */
+                    args[ct] = &input[start]; /* set up pointer */
 
 		            ct++;
 		        }
 
-                inputBuffer[i] = '\0'; /* add a null char; make a C string */
+                input[i] = '\0'; /* add a null char; make a C string */
 		        start = -1;
 		    break;
             case '\n': /* should be the final char examined */
 		        if (start != -1){
-                    args[ct] = &inputBuffer[start];     
+                    args[ct] = &input[start];     
 
 		            ct++;
 		        }
 
-                inputBuffer[i] = '\0';
+                input[i] = '\0';
                 args[ct] = NULL; /* no more arguments to this command */
 		    break;
 	        default : /* some other character */
 		        if (start == -1)
 		            start = i;
 
-                if (inputBuffer[i] == '&'){
+                if (input[i] == '&'){
 		            *background  = 1;
 
-                    inputBuffer[i-1] = '\0';
+                    input[i-1] = '\0';
 		        }
 	    }
     }
 
     args[ct] = NULL; /* just in case the input line was > 80 */
-
-	//for (i = 0; i < ct; i++)
-	//	printf("args %d = %s\n",i,args[i]);
 }
  
 int main(void)
 {
-    char inputBuffer[MAX_LINE]; /*buffer to hold command entered */
-    int background; /* equals 1 if a command is followed by '&' */
-    char *args[MAX_LINE/2 + 1]; /*command line arguments */
+    char *inputBuffer;
+    int background;
+    char *args[MAX_LINE/2 + 1];
 
     while (1){
         background = 0;
         printf("nutshell>> ");
-        /*setup() calls exit() when Control-D is entered */
-        setup(inputBuffer, args, &background);
+        int length = readinput(stdin,MAX_LINE,&inputBuffer);
+        parseinput(inputBuffer,length ,args, &background);
         executeCommand(args);
+
         /** the steps are:
         (1) fork a child process using fork()
         (2) the child process will invoke execv()
@@ -139,8 +133,6 @@ void executeCommand(char* args[]){
     if(program == NULL)
         return;
 
-    //note :creating strings as char pointers inside a function is bad
-
     char* path = getenv("PATH");
     char* programPath;
 
@@ -148,7 +140,6 @@ void executeCommand(char* args[]){
 
     do
     {
-        //printf("%s\n",token);
         if(exists(token,program)){
             printf("Fucking exists!!!");
         }
