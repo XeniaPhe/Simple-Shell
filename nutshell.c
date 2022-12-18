@@ -133,18 +133,23 @@ void executeCommand(char* args[]){
     if(program == NULL)
         return;
 
-    char* path = getenv("PATH");
+    const char* path = getenv("PATH");
+    char* copy = (char*)malloc(strlen(path) + 1);
+    strcpy(copy,path);
+
+    char* token = strtok(copy,":");
+
     char* programPath;
-
-    char* token = strtok(path,":");
-
+    
     do
     {
         if(exists(token,program)){
-            printf("Fucking exists!!!");
+            printf("%s/%s\n",token,program);
         }
 
     } while ((token = strtok(NULL,":")) != NULL);
+
+    free(copy);
     
     if(programPath == NULL)
         fprintf(stdin,"Command not found!");
