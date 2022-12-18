@@ -22,6 +22,7 @@ void catch_fgkill(int sig_num);
 void add_process(pid_t process);
 int remove_process(pid_t process);
 void check_bgprocesses();
+void move_bgtofg(pid_t pid);
 
 struct history
 {
@@ -108,7 +109,7 @@ int parse_input(char *input,int length ,char *args[]){
     and disregard the -1 value */
 
     if ( (length < 0) && (errno != EINTR) ) {
-        fprintf(stderr,"error reading the command\n");
+        fprintf(stderr,"Error reading the command\n");
 	    exit(-1); /* terminate with error code of -1 */
     }
 
@@ -167,10 +168,29 @@ void execute_command(char* args[], int background){
         exit(0);
     }
 
+    if(strncmp(program,"fg",2) == 0){
+        char *pidArg = args[1];
+
+        if(pidArg == NULL || pidArg[1] == '\0'){
+            fprintf(stderr,"1You must input a valid pid following a %% sign!\n");
+            return;
+        }
+
+        pid_t pid = atoi(&pidArg[1]);
+
+        if(pid == 0){
+            fprintf(stderr,"2You must input a valid pid following a %% sign!\n");
+            return;
+        }
+
+        move_bgtofg(pid);
+        return;
+    }
+
     if(strncmp(program,"history",7) == 0){
         int number = -1;
-
-        if(args[1] != NULL && strncmp(args[1],"-i",2) == 0){
+        char* i = args[1];
+        if(i != NULL && strncmp(i,"-i",2) == 0){
             char *numberArg = args[2];
             
             if(numberArg == NULL){
@@ -353,4 +373,17 @@ void check_bgprocesses(){
         if(pid == return_pid)
             remove_process(pid);
     }
+}
+
+void move_bgtofg(pid_t pid){
+    if(remove_process(pid) == 0)
+        return;
+
+    foregroundProcess = pid;
+
+    if (kill(pid, SIGCONT) < 0) 
+        perror("");
+
+    if (waitpid(pid, NULL, WUNTRACED) < 0)
+        perror("");
 }
