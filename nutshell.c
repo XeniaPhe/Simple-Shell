@@ -16,8 +16,14 @@ int readinput(FILE *fp, size_t size,char **input);
 int parseinput(char *input,int length ,char *args[]);
 void executeCommand(char *args[],int background);
 int exists(char* directory, char *program);
+void exec_history(int index);
+void update_history(char* inputBuffer, int length);
 
-char* history[10];
+struct history
+{
+    char* log[10];
+    int counter;
+} history;
 
 int main(void){
     char *inputBuffer;
@@ -26,8 +32,10 @@ int main(void){
     while (1){
         printf("nutshell>> ");
         int length = readinput(stdin,MAX_LINE,&inputBuffer);
+        update_history(inputBuffer, length);
         int background = parseinput(inputBuffer,length ,args);
         executeCommand(args,background);
+        free(inputBuffer);
     }
 }
 
@@ -134,6 +142,33 @@ void executeCommand(char* args[], int background){
     if(program == NULL)
         return;
 
+    if(strncmp(program,"history",7) == 0){
+        int number = -1;
+
+        if(args[1] != NULL && strncmp(args[1],"-i",2) == 0){
+            char *numberArg = args[2];
+            
+            if(numberArg == NULL){
+                perror("You must input a number!");
+                return;
+            }
+
+            char ch = numberArg[0];
+            
+
+            if(ch <= '9' && ch >= '0' && numberArg[1] == '\0'){
+                number = ch - '0';
+            }
+            else{
+                perror("Invalid index for history!");
+                return;
+            }
+        }
+
+        exec_history(number);
+        return;
+    }
+
     const char* path = getenv("PATH");
     char* copy = (char*)malloc(strlen(path) + 1);
     strcpy(copy,path);
@@ -189,4 +224,38 @@ int exists(char* directory, char* program){
 
     closedir(d);
     return 0;
+}
+
+void exec_history(int index){
+    if(index == -1){
+        for(int i = 0; i < 10; i++){
+            index = (history.counter - i - 1) % 10;
+            char* log = history.log[index];
+        
+            if(log == NULL)
+                break;
+
+            printf("%d %s",i,log);
+        }
+
+        return;
+    }
+
+    char *args[MAX_LINE/2 + 1];
+
+    index = (history.counter - index - 1) % 10;
+    char* command = history.log[index];
+
+    int length = strlen(command);
+    update_history(command, length);
+    int background = parseinput(command,length ,args);
+    executeCommand(args,background);
+}
+
+void update_history(char* inputBuffer, int length){
+    int index = (++history.counter) % 10;
+    free(history.log[index]);
+    char* copy = (char*)malloc(sizeof(char) * length);
+    strcpy(copy,inputBuffer);
+    history.log[index] = copy;
 }
