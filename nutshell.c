@@ -12,8 +12,24 @@
 
 #define MAX_LINE 80
 
+int readinput(FILE *fp, size_t size,char **input);
+int parseinput(char *input,int length ,char *args[]);
 void executeCommand(char *args[],int background);
 int exists(char* directory, char *program);
+
+char* history[10];
+
+int main(void){
+    char *inputBuffer;
+    char *args[MAX_LINE/2 + 1];
+
+    while (1){
+        printf("nutshell>> ");
+        int length = readinput(stdin,MAX_LINE,&inputBuffer);
+        int background = parseinput(inputBuffer,length ,args);
+        executeCommand(args,background);
+    }
+}
 
 int readinput(FILE *fp, size_t size,char **input){
     int ch;
@@ -43,15 +59,14 @@ int readinput(FILE *fp, size_t size,char **input){
     return len;
 }
 
-char* history[10];
-
-void parseinput(char *input,int length ,char *args[],int *background)
-{
+int parseinput(char *input,int length ,char *args[]){
     int i,      /* loop index for accessing inputBuffer array */
         start,  /* index where beginning of next command parameter is */
-        ct;     /* index of where to place the next parameter into args[] */
+        ct,     /* index of where to place the next parameter into args[] */
+        bg;
     
     ct = 0;
+    bg = 0;
 
     /* 0 is the system predefined file descriptor for stdin (standard input),
        which is the user's screen in this case. inputBuffer by itself is the
@@ -93,7 +108,7 @@ void parseinput(char *input,int length ,char *args[],int *background)
 		    break;
 	        default : /* some other character */
                 if (input[i] == '&'){
-		            *background  = 1;
+		            bg = 1;
                     
                     if(start == -1){
                         args[ct] = NULL;
@@ -110,23 +125,8 @@ void parseinput(char *input,int length ,char *args[],int *background)
     }
 
     args[ct] = NULL; /* just in case the input line was > 80 */
+    return bg;
 }
- 
-int main(void)
-{
-    char *inputBuffer;
-    int background;
-    char *args[MAX_LINE/2 + 1];
-
-    while (1){
-        background = 0;
-        printf("nutshell>> ");
-        int length = readinput(stdin,MAX_LINE,&inputBuffer);
-        parseinput(inputBuffer,length ,args, &background);
-        executeCommand(args,background);
-    }
-}
-
 
 void executeCommand(char* args[], int background){
     char* program = args[0];
