@@ -11,6 +11,10 @@
 #include <signal.h>
 
 #define MAX_LINE 80
+#define LEFT_REDIRECTION 0
+#define LEFT_REDIRECTION_APPEND 1
+#define RIGHT_REDIRECTION 2
+#define RIGHT_REDIRECTION_APPEND 3
 
 int read_input(FILE *fp, size_t size,char **input);
 int parse_input(char *input,int length ,char *args[]);
@@ -23,6 +27,7 @@ void add_process(pid_t process);
 int remove_process(pid_t process);
 void check_bgprocesses();
 void move_bgtofg(pid_t pid);
+void execute_program(char* program,char* args[], int background);
 
 struct history
 {
@@ -186,7 +191,7 @@ void execute_command(char* args[], int background){
         move_bgtofg(pid);
         return;
     }
-
+    
     if(strncmp(program,"history",7) == 0){
         int number = -1;
         char* i = args[1];
@@ -213,54 +218,9 @@ void execute_command(char* args[], int background){
         exec_history(number);
         return;
     }
-
-    const char* path = getenv("PATH");
-    char* copy = (char*)malloc(strlen(path) + 1);
-    strcpy(copy,path);
-
-    char* token = strtok(copy,":");
-
-    char* programPath = NULL;
-
-    do
-    {
-        if(exists(token,program)){
-            programPath = token;
-            strcat(programPath,"/");
-            strcat(programPath,program);
-            break;
-        }
-
-    } while ((token = strtok(NULL,":")) != NULL);
-
-    free(copy);
     
-    if(programPath == NULL){
-        fprintf(stderr,"Command not found!\n");
-        return;
-    }
-
-    pid_t childpid = fork();
-
-    if(childpid == 0){
-        execv(programPath,args);
-        fprintf(stderr,"Error executing the program\n");
-    }
-
-    int options = 0;
-
-    if(background){
-        printf("[%d]\n",childpid);
-
-        add_process(childpid);
-        foregroundProcess = -1;
-        options |= WNOHANG;
-    }
-    else{
-        foregroundProcess = childpid;
-    }
-
-    waitpid(childpid,NULL,options);
+    //check if there is any redirection
+    execute_program(program,args,background);
 }
 
 int exists(char* directory, char* program){
@@ -386,4 +346,54 @@ void move_bgtofg(pid_t pid){
 
     if (waitpid(pid, NULL, WUNTRACED) < 0)
         perror("");
+}
+
+void execute_program(char* program,char* args[], int background){
+    const char* path = getenv("PATH");
+    char* copy = (char*)malloc(strlen(path) + 1);
+    strcpy(copy,path);
+
+    char* token = strtok(copy,":");
+
+    char* programPath = NULL;
+
+    do
+    {
+        if(exists(token,program)){
+            programPath = token;
+            strcat(programPath,"/");
+            strcat(programPath,program);
+            break;
+        }
+
+    } while ((token = strtok(NULL,":")) != NULL);
+
+    free(copy);
+    
+    if(programPath == NULL){
+        fprintf(stderr,"Command not found!\n");
+        return;
+    }
+
+    pid_t childpid = fork();
+
+    if(childpid == 0){
+        execv(programPath,args);
+        fprintf(stderr,"Error executing the program\n");
+    }
+
+    int options = 0;
+
+    if(background){
+        printf("[%d]\n",childpid);
+
+        add_process(childpid);
+        foregroundProcess = -1;
+        options |= WNOHANG;
+    }
+    else{
+        foregroundProcess = childpid;
+    }
+
+    waitpid(childpid,NULL,options);
 }
