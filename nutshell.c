@@ -474,147 +474,77 @@ void execute_program(char* program,char* args[], int background){
     waitpid(childpid,NULL,options);
 }
 
-void execute_programs(char*** args_separated, int* redirections, int redirectionCount, int background)
-{
-    // Check if args_separated and redirections arrays are empty
-    if (redirectionCount == 0)
-    {
-        // Execute the command with the given arguments and background flag
-        execvp(args_separated[0][0], args_separated[0]);
-        perror("Error executing command");
-        exit(1);
-    }
+void execute_programs(char*** args_separated, int* redirections,int redirectionCount, int background){
+  int i, j;
+  int fileDescriptor;
+  int currentRedirection;
+  pid_t pid;
+  char** currentArgs;
+  int inputRedirection = -1;
+  int outputRedirection = -1;
 
-    // Create pipes for the number of programs that need to be executed
-    int pipes[redirectionCount - 1][2];
-    for (int i = 0; i < redirectionCount - 1; i++)
-    {
-        if (pipe(pipes[i]) < 0)
-        {
-            perror("Error creating pipes");
-            exit(1);
+  for(i = 0; i < redirectionCount + 1; i++){
+    currentArgs = args_separated[i];
+    currentRedirection = i < redirectionCount ? redirections[i] : -1;
+    if(currentRedirection == LEFT_REDIRECTION || currentRedirection == LEFT_REDIRECTION_APPEND){
+      // The first element of the currentArgs array is the file name for input redirection
+      inputRedirection = open(currentArgs[0], currentRedirection == LEFT_REDIRECTION ? O_RDONLY : O_RDWR | O_CREAT | O_APPEND, 0644);
+      if(inputRedirection < 0){
+        fprintf(stderr, "Error opening file for input redirection: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+      }
+      // Remove the file name from the currentArgs array and shift the remaining elements back
+      char* fileName = currentArgs[0];
+      for(j = 0; currentArgs[j+1] != NULL; j++)
+        currentArgs[j] = currentArgs[j+1];
+      currentArgs[j] = NULL;
+      free(fileName);
+    }
+    else if(currentRedirection == RIGHT_REDIRECTION || currentRedirection == RIGHT_REDIRECTION_APPEND){
+      // The first element of the currentArgs array is the file name for output redirection
+        outputRedirection = open(currentArgs[0], currentRedirection == RIGHT_REDIRECTION ? O_WRONLY | O_TRUNC | O_CREAT : O_WRONLY | O_APPEND | O_CREAT, 0644);
+    }
+    else{
+    if((pid = fork()) < 0){
+      fprintf(stderr, "Error creating child process: %s\n", strerror(errno));
+      exit(EXIT_FAILURE);
+    }
+    else if(pid == 0){
+      if(inputRedirection != -1){
+        if(dup2(inputRedirection, STDIN_FILENO) < 0){
+          fprintf(stderr, "Error redirecting input: %s\n", strerror(errno));
+          exit(EXIT_FAILURE);
         }
-    }
-
-    // Iterate through each program
-    for (int i = 0; i < redirectionCount; i++)
-    {
-        // Fork a new process
-        pid_t pid = fork();
-
-        if (pid < 0)
-        {
-            perror("Error forking process");
-            exit(1);
+        close(inputRedirection);
+      }
+      if(outputRedirection != -1){
+        if(dup2(outputRedirection, STDOUT_FILENO) < 0){
+          fprintf(stderr, "Error redirecting output: %s\n", strerror(errno));
+          exit(EXIT_FAILURE);
         }
-        else if (pid == 0)
-        {
-            // In the child process, set up the redirections as needed
-            if (i > 0)
-            {
-                // Set the standard input to the output of the previous program
-                if (dup2(pipes[i - 1][0], STDIN_FILENO) < 0)
-                {
-                    perror("Error redirecting standard input");
-                    exit(1);
-                }
-            }
-
-            if (i < redirectionCount - 1)
-            {
-                // Set the standard output to the input of the next program
-                if (dup2(pipes[i][1], STDOUT_FILENO) < 0)
-                {
-                    perror("Error redirecting standard output");
-                    exit(1);
-                }
-            }
-
-            // Close all pipes
-            for (int j = 0; j < redirectionCount - 1; j++)
-            {
-                close(pipes[j][0]);
-                close(pipes[j][1]);
-            }
-
-            // Handle redirection to/from files
-            int fd;
-            switch (redirections[i])
-            {
-                case LEFT_REDIRECTION:
-                    fd = open(args_separated[i + 1][0], O_RDONLY);
-                    if (fd < 0)
-                    {
-                        perror("Error opening file for reading");
-                        exit(1);
-                    }
-                    if (dup2(fd, STDIN_FILENO) < 0)
-                    {
-                        perror("Error redirecting standard input");
-                        exit(1);
-                    }
-                                        break;
-                case LEFT_REDIRECTION_APPEND:
-                    fd = open(args_separated[i + 1][0], O_RDONLY | O_APPEND);
-                    if (fd < 0)
-                    {
-                        perror("Error opening file for reading");
-                        exit(1);
-                    }
-                    if (dup2(fd, STDIN_FILENO) < 0)
-                    {
-                        perror("Error redirecting standard input");
-                        exit(1);
-                    }
-                    break;
-                case RIGHT_REDIRECTION:
-                    fd = open(args_separated[i + 1][0], O_CREAT | O_WRONLY | O_TRUNC, 0644);
-                    if (fd < 0)
-                    {
-                        perror("Error opening file for writing");
-                        exit(1);
-                    }
-                    if (dup2(fd, STDOUT_FILENO) < 0)
-                    {
-                        perror("Error redirecting standard output");
-                        exit(1);
-                    }
-                    break;
-                case RIGHT_REDIRECTION_APPEND:
-                    fd = open(args_separated[i + 1][0], O_CREAT | O_WRONLY | O_APPEND, 0644);
-                    if (fd < 0)
-                    {
-                        perror("Error opening file for writing");
-                        exit(1);
-                    }
-                    if (dup2(fd, STDOUT_FILENO) < 0)
-                    {
-                        perror("Error redirecting standard output");
-                        exit(1);
-                    }
-                    break;
-            }
-
-            // Execute the command with the given arguments and background flag
-            execvp(args_separated[i][0], args_separated[i]);
-            perror("Error executing command");
-            exit(1);
-        }
+      }
+      if(execvp(currentArgs[0], currentArgs) < 0){
+        fprintf(stderr, "Error executing command: %s\n", strerror(errno));
+        exit(EXIT_FAILURE);
+      }
     }
-
-    // In the parent process, close all pipes
-    for (int i = 0; i < redirectionCount - 1; i++)
-    {
-        close(pipes[i][0]);
-        close(pipes[i][1]);
+    else{
+      if(inputRedirection != -1)
+        close(inputRedirection);
+      if(outputRedirection != -1)
+        close(outputRedirection);
+      if(!background){
+        if(foregroundProcess != -1)
+          kill(foregroundProcess, SIGKILL);
+        foregroundProcess = pid;
+        signal(SIGINT, catch_fgkill);
+        waitpid(pid, NULL, 0);
+        foregroundProcess = -1;
+        signal(SIGINT, SIG_DFL);
+      }
+      else{
+        add_bgprocess(pid);
+      }
     }
-
-    // If the command is not running in the background, wait for all child processes to finish
-    if (!background)
-    {
-        for (int i = 0; i < redirectionCount; i++)
-        {
-            wait(NULL);
-        }
-    }
-}
+  }
+}}
