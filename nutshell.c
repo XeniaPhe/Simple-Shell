@@ -184,53 +184,54 @@ int parse_input(char *input,int length ,char *args[]){
 }
 
 void execute_command(char* args[], int background){
+
+    // Get the program name (first argument in the array).
     char* program = args[0];
 
+    // If there is no program specified, return.
     if(program == NULL)
         return;
 
+    // Check if the program is "exit". If it is, exit the program.
+    // If there are any background processes still running, print an error message and return.
     if(strncmp(program,"exit",4) == 0){
         if(head != NULL){
             fprintf(stderr,"There is at least one background process still running!\n");
             return;
         }
-
         exit(0);
     }
 
+    // Check if the program is "fg". If it is, move the specified background process to the foreground.
+    // If the pid is not specified or is invalid, print an error message and return.
     if(strncmp(program,"fg",2) == 0){
         char *pidArg = args[1];
-
         if(pidArg == NULL || pidArg[1] == '\0'){
             fprintf(stderr,"You must input a valid pid following a %% sign!\n");
             return;
         }
-
         pid_t pid = atoi(&pidArg[1]);
-
         if(pid == 0){
             fprintf(stderr,"You must input a valid pid following a %% sign!\n");
             return;
         }
-
         move_bgtofg(pid);
         return;
     }
-    
+
+    // Check if the program is "history". If it is, execute the history command.
+    // If the "-i" flag is specified, print the command with the specified index.
+    // If the index is not specified or is invalid, print an error message and return.
     if(strncmp(program,"history",7) == 0){
         int number = -1;
         char* i = args[1];
         if(i != NULL && strncmp(i,"-i",2) == 0){
             char *numberArg = args[2];
-            
             if(numberArg == NULL){
                 fprintf(stderr,"You must input a number!\n");
                 return;
             }
-
             char ch = numberArg[0];
-            
-
             if(ch <= '9' && ch >= '0' && numberArg[1] == '\0'){
                 number = ch - '0';
             }
@@ -239,23 +240,24 @@ void execute_command(char* args[], int background){
                 return;
             }
         }
-
         exec_history(number);
         return;
     }
-    
-    //check if there is any redirection
 
+    // Allocate memory for arrays to hold the arguments and redirections for each command.
     char*** args_separated = (char***)malloc(0);
     int* redirections = (int*)malloc(0);
 
+    // Initialize variables to keep track of the current command being processed.
     int counter = 0;
     int start = 0;
     int checker = 0;
 
+    // Iterate through the args array, looking for redirections.
     for(int i = 0; i < 41; i++){
         char* arg = args[i];
-
+        // If we reach the end of the args array, break out of the loop.
+        // If the checker variable is set, this means there was an invalid command, so print an error message and return.
         if(arg == NULL){
             if(checker){
                 fprintf(stderr,"Invalid command!\n");
@@ -263,12 +265,11 @@ void execute_command(char* args[], int background){
                 free(redirections);
                 return;
             }
-
             break;
         }
-
+        // Check if the current argument is a redirection operator.
+        // If it is, set the redirection variable to the appropriate value.
         int redirection = -1;
-
         if(strcmp(arg,"<") == 0)
             redirection = LEFT_REDIRECTION;
         else if(strcmp(arg, "<<") == 0)
@@ -278,6 +279,8 @@ void execute_command(char* args[], int background){
         else if(strcmp(arg,">>") == 0)
             redirection = RIGHT_REDIRECTION_APPEND;
         
+        // If the current argument is a redirection operator, set the checker variable and add the current command
+        // to the args_separated and redirections arrays.
         if(redirection != -1){
             if(checker){
                 fprintf(stderr,"Invalid command!\n");
@@ -285,22 +288,21 @@ void execute_command(char* args[], int background){
                 free(redirections);
                 return;
             }
-
             counter++;
             checker = 1;
             args[i] = NULL;
-
             args_separated = (char***)realloc(args_separated,sizeof(char**) * (counter + 1));
             redirections = (int*)realloc(redirections,sizeof(int) * counter);
-
             args_separated[counter - 1] = &args[start++];
             redirections[counter - 1] = redirection;
             continue;
         }
-
+        // If the current argument is not a redirection operator, reset the checker variable.
         checker = 0;
     }
 
+    // If the checker variable is still set after processing all of the arguments,
+    // this means there was an invalid command, so print an error message and return.
     if(checker){
         fprintf(stderr,"Invalid command!\n");
         free(args_separated);
@@ -308,34 +310,45 @@ void execute_command(char* args[], int background){
         return;
     }
 
+    // If there are no redirections in the command, execute the program.
     if(counter == 0){
         execute_program(program,args,background);
         return;
     }
 
+    // If there are redirections in the command, execute each command in the args_separated array
+    // with the corresponding redirection in the redirections array.
     execute_programs(args_separated,redirections,counter,background);
 }
 
 int exists(char* directory, char* program){
+    // Open the directory specified by the input directory argument
     DIR *d;
     struct dirent *dir;
     d = opendir(directory);
+    // Return 0 if the directory cannot be opened
     if(d == NULL)
         return 0;
+    // Iterate through the directory contents
     while ((dir = readdir(d)) != NULL)
+        // Return 1 if a file with the same name as the input program argument is found
         if(strcmp(dir->d_name,program) == 0)
             return 1;
 
+    // Close the directory and return 0 if no file with the same name as the input program argument is found
     closedir(d);
     return 0;
 }
 
 void exec_history(int index){
+    // If the index argument is -1, print the last 10 commands in the history log
     if(index == -1){
         for(int i = 0; i < 10; i++){
+            // Calculate the index of the current command in the history log
             index = (history.counter - i - 1) % 10;
             char* log = history.log[index];
         
+            // Break the loop if the current command is NULL
             if(log == NULL)
                 break;
 
@@ -347,29 +360,42 @@ void exec_history(int index){
 
     char *args[MAX_LINE/2 + 1];
 
+    // Calculate the index of the command to be executed in the history log
     index = (history.counter - index - 1) % 10;
     char* command = history.log[index];
 
+    // Parse the command into arguments
     int length = strlen(command);
     update_history(command, length);
     int background = parse_input(command,length ,args);
+    // Execute the command
     execute_command(args,background);
 }
 
 void update_history(char* inputBuffer, int length){    
+    // Increment the history counter and calculate the index for the new entry
     int index = (++history.counter) % 10;
+
+    // Free the memory for the previous entry at this index
     free(history.log[index]);
+
+    // Allocate memory for the new entry and copy the input buffer into it
     char* copy = (char*)malloc(sizeof(char) * length);
     strcpy(copy,inputBuffer);
+
+    // Store the copy in the history log
     history.log[index] = copy;
 }
 
 void catch_fgkill(int sig_num){
+    // Re-register the signal handler for SIGTSTP
     signal(SIGTSTP, catch_fgkill);
 
+    // If there is no foreground process, return early
     if(foregroundProcess == -1)
         return;
 
+    // Kill the foreground process
     kill(foregroundProcess,SIGKILL);
 }
 
@@ -467,18 +493,26 @@ void move_bgtofg(pid_t pid){
         perror("");
 }
 
+// This function executes a program with the given arguments, and has the option to run it in the background
 void execute_program(char* program,char* args[], int background){
+    // Get the PATH environment variable
     const char* path = getenv("PATH");
+    // Make a copy of the PATH variable
     char* copy = (char*)malloc(strlen(path) + 1);
     strcpy(copy,path);
 
+    // Tokenize the copy of the PATH variable by the ':' character
     char* token = strtok(copy,":");
 
+    // Initialize a variable to store the full path of the program
     char* programPath = NULL;
 
+    // Iterate through the tokenized PATH directories
     do
     {
+        // Check if the program exists in the current directory
         if(exists(token,program)){
+            // If it does, store the full path to the program
             programPath = token;
             strcat(programPath,"/");
             strcat(programPath,program);
@@ -487,33 +521,46 @@ void execute_program(char* program,char* args[], int background){
 
     } while ((token = strtok(NULL,":")) != NULL);
 
+    // Free the copy of the PATH variable
     free(copy);
     
+    // If the program was not found in any of the PATH directories, print an error message and return
     if(programPath == NULL){
         fprintf(stderr,"Command not found!\n");
         return;
     }
 
+    // Fork the process
     pid_t childpid = fork();
 
+    // If this is the child process
     if(childpid == 0){
+        // Execute the program with the given arguments
         execv(programPath,args);
+        // If execv returns, it means an error occurred
         fprintf(stderr,"Error executing the program\n");
     }
 
     int options = 0;
 
+    // If the program should run in the background
     if(background){
+        // Print the child process ID
         printf("[%d]\n",childpid);
 
+        // Add the child process to the list of background processes
         add_bgprocess(childpid);
+        // Set the foreground process ID to -1 (no foreground process)
         foregroundProcess = -1;
+        // Set the options for waitpid to return immediately if the child process has already terminated
         options |= WNOHANG;
     }
     else{
+        // Set the foreground process ID to the child process ID
         foregroundProcess = childpid;
     }
 
+    // Wait for the child process to terminate
     waitpid(childpid,NULL,options);
 }
 
