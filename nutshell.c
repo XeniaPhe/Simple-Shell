@@ -77,32 +77,49 @@ int main(void){
     }
 }
 
-int read_input(FILE *fp, size_t size,char **input){
-    int ch;
-    size_t len = 0;
-    *input = realloc(NULL, sizeof(char)*size);
+// read_input reads a line from the specified file and stores it in the input buffer
+// fp: pointer to the input file
+// size: initial size of the input buffer
+// input: pointer to the input buffer
+int read_input(FILE *fp, size_t size, char **input) {
+  // ch: character read from the file
+  int ch;
 
-    if(!*input)
-        return 0;
+  // len: length of the input string
+  size_t len = 0;
 
-    while((ch=fgetc(fp)) != EOF){
-        (*input)[len++]= ch;
+  // allocate memory for the input buffer
+  *input = realloc(NULL, sizeof(char) * size);
 
-        if(len==size){
-            *input = realloc(*input, sizeof(char)*(size+=16));
+  // return 0 if memory allocation fails
+  if (!*input) return 0;
 
-            if(!*input)
-                return len;
-        }
+  // read characters from the file until end of file or newline is reached
+  while ((ch = fgetc(fp)) != EOF) {
+    // store the character in the input buffer
+    (*input)[len++] = ch;
 
-        if(ch == '\n'){
-            (*input)[len++] = '\0';
-            break;
-        }
+    // increase the size of the input buffer if it is full
+    if (len == size) {
+      *input = realloc(*input, sizeof(char) * (size += 16));
+
+      // return len if memory allocation fails
+      if (!*input) return len;
     }
 
-    *input = realloc(*input, sizeof(*input)*len);
-    return len;
+    // break the loop if a newline is encountered
+    if (ch == '\n') {
+      // add a null terminator to the input string
+      (*input)[len++] = '\0';
+      break;
+    }
+  }
+
+  // shrink the size of the input buffer to the actual size of the input string
+  *input = realloc(*input, sizeof(*input) * len);
+
+  // return the length of the input string
+  return len;
 }
 
 int parse_input(char *input,int length ,char *args[]){
@@ -357,69 +374,95 @@ void catch_fgkill(int sig_num){
 }
 
 void add_bgprocess(pid_t process){
+    // Allocate memory for the new background process
     bg_process* newprocess = (bg_process*)malloc(sizeof(bg_process));
+    // Set the pid of the new process
     newprocess->pid = process;
 
+    // If the linked list is empty, set the new process as the head of the linked list
     if(head == NULL){
         head = newprocess;
         return;
     }
 
+    // Initialize a pointer to the head of the linked list
     bg_process* walker = head;
 
+    // Iterate through the linked list until the end is reached
     while(walker->next != NULL)
         walker = walker->next;
 
+    // Add the new process to the end of the linked list
     walker->next = newprocess;
 }
 
 int remove_process(pid_t process){
+    // Return 0 if the linked list is empty
     if(head == NULL)
         return 0;
 
+    // Initialize pointers to the previous and current nodes in the linked list
     bg_process* prev = NULL;
     bg_process* curr = head;
     
+    // Iterate through the linked list until the node with the specified process pid is found
     while(curr->pid != process){
+        // Update the previous node to be the current node
         prev = curr;
+        // Move to the next node in the linked list
         curr = curr->next;
 
+        // Return 0 if the end of the linked list is reached without finding the node with the specified process pid
         if(curr == NULL)
             return 0;
     }
     
+    // Update the head of the linked list if the node to be removed is the head
     if(!prev)
         head = curr->next;
+    // Update the next pointer of the previous node if the node to be removed is not the head
     else
         prev->next = curr->next;
 
+    // Free the memory allocated for the node being removed
     free(curr);
     return 1;
 }
 
 void check_bgprocesses(){
+    // Initialize a pointer to the head of the linked list of background processes
     bg_process* walker = head;
 
+    // Iterate through the linked list
     while(walker != NULL){
+        // Get the pid of the current background process
         pid_t pid = walker->pid;
+        // Check if the process has terminated using waitpid
         pid_t return_pid = waitpid(pid,NULL,WNOHANG);
 
+        // Move to the next node in the linked list
         walker = walker->next;
 
+        // If the pid of the terminated process is returned by waitpid, remove the process from the linked list
         if(pid == return_pid)
             remove_process(pid);
     }
 }
 
+// This function moves a background process with the given process ID to the foreground
 void move_bgtofg(pid_t pid){
+    // If the process is not in the list of background processes, return
     if(remove_process(pid) == 0)
         return;
 
+    // Set the foreground process ID to the given process ID
     foregroundProcess = pid;
 
+    // Send the SIGCONT signal to the process to continue execution
     if (kill(pid, SIGCONT) < 0) 
         perror("");
 
+    // Wait for the process to change state (e.g. terminated, stopped)
     if (waitpid(pid, NULL, WUNTRACED) < 0)
         perror("");
 }
@@ -547,4 +590,5 @@ void execute_programs(char*** args_separated, int* redirections,int redirectionC
       }
     }
   }
-}}
+}
+}
