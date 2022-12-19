@@ -28,6 +28,7 @@ int remove_process(pid_t process);
 void check_bgprocesses();
 void move_bgtofg(pid_t pid);
 void execute_program(char* program,char* args[], int background);
+void execute_programs(char** args[], int redirectionCount, int background);
 
 struct history
 {
@@ -177,14 +178,14 @@ void execute_command(char* args[], int background){
         char *pidArg = args[1];
 
         if(pidArg == NULL || pidArg[1] == '\0'){
-            fprintf(stderr,"1You must input a valid pid following a %% sign!\n");
+            fprintf(stderr,"You must input a valid pid following a %% sign!\n");
             return;
         }
 
         pid_t pid = atoi(&pidArg[1]);
 
         if(pid == 0){
-            fprintf(stderr,"2You must input a valid pid following a %% sign!\n");
+            fprintf(stderr,"You must input a valid pid following a %% sign!\n");
             return;
         }
 
@@ -220,7 +221,75 @@ void execute_command(char* args[], int background){
     }
     
     //check if there is any redirection
-    execute_program(program,args,background);
+
+    char*** args_separated = (char***)malloc(0);
+    int* redirections = (int*)malloc(0);
+
+    int counter = 0;
+    int start = 0;
+    int checker = 0;
+
+    for(int i = 0; i < 41; i++){
+        char* arg = args[i];
+
+        if(arg == NULL){
+            if(checker){
+                fprintf(stderr,"Invalid command!\n");
+                free(args_separated);
+                free(redirections);
+                return;
+            }
+
+            break;
+        }
+
+        int redirection = -1;
+
+        if(strcmp(arg,"<") == 0)
+            redirection = LEFT_REDIRECTION;
+        else if(strcmp(arg, "<<") == 0)
+            redirection = LEFT_REDIRECTION_APPEND;
+        else if(strcmp(arg,">") == 0)
+            redirection = RIGHT_REDIRECTION;
+        else if(strcmp(arg,">>") == 0)
+            redirection = RIGHT_REDIRECTION_APPEND;
+        
+        if(redirection != -1){
+            if(checker){
+                fprintf(stderr,"Invalid command!\n");
+                free(args_separated);
+                free(redirections);
+                return;
+            }
+
+            counter++;
+            checker = 1;
+            args[i] = NULL;
+
+            args_separated = (char***)realloc(args_separated,sizeof(char**) * (counter + 1));
+            redirections = (int*)realloc(redirections,sizeof(int) * counter);
+
+            args_separated[counter - 1] = &args[start++];
+            redirections[counter - 1] = redirection;
+            continue;
+        }
+
+        checker = 0;
+    }
+
+    if(checker){
+        fprintf(stderr,"Invalid command!\n");
+        free(args_separated);
+        free(redirections);
+        return;
+    }
+
+    if(counter == 0){
+        execute_program(program,args,background);
+        return;
+    }
+
+    execute_programs(args_separated,counter,background);
 }
 
 int exists(char* directory, char* program){
@@ -396,4 +465,8 @@ void execute_program(char* program,char* args[], int background){
     }
 
     waitpid(childpid,NULL,options);
+}
+
+void execute_programs(char** args[], int redirectionCount, int background){
+    printf("test\n");
 }
