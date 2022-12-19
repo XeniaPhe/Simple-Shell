@@ -23,12 +23,12 @@ int exists(char* directory, char *program);
 void exec_history(int index);
 void update_history(char* inputBuffer, int length);
 void catch_fgkill(int sig_num);
-void add_process(pid_t process);
+void add_bgprocess(pid_t process);
 int remove_process(pid_t process);
 void check_bgprocesses();
 void move_bgtofg(pid_t pid);
 void execute_program(char* program,char* args[], int background);
-void execute_programs(char** args[], int redirectionCount, int background);
+void execute_programs(char*** args_separated, int* redirections,int redirectionCount, int background);
 
 struct history
 {
@@ -51,21 +51,28 @@ int main(void){
     char *inputBuffer;
     char *args[MAX_LINE/2 + 1];
 
+    // Run the shell indefinitely
     while (1){
         printf("nutshell>> ");
+        // Read user input from stdin
         int length = read_input(stdin,MAX_LINE,&inputBuffer);
+        // If the user entered an empty line, exit the shell
         if(length == 0)
             exit(0);
-
+        // If the user entered only a newline, continue to the next iteration
         if(strncmp(inputBuffer,"\n",1) == 0){
             free(inputBuffer);
             continue;
         }
-        
+        // Add the user input to the shell's history
         update_history(inputBuffer, length);
+        // Parse the user input
         int background = parse_input(inputBuffer,length ,args);
+        // Check for any finished background processes
         check_bgprocesses();
+        // Execute the command specified by the user input
         execute_command(args,background);
+        // Free the memory allocated for the user input
         free(inputBuffer);
     }
 }
@@ -289,7 +296,7 @@ void execute_command(char* args[], int background){
         return;
     }
 
-    execute_programs(args_separated,counter,background);
+    execute_programs(args_separated,redirections,counter,background);
 }
 
 int exists(char* directory, char* program){
@@ -349,7 +356,7 @@ void catch_fgkill(int sig_num){
     kill(foregroundProcess,SIGKILL);
 }
 
-void add_process(pid_t process){
+void add_bgprocess(pid_t process){
     bg_process* newprocess = (bg_process*)malloc(sizeof(bg_process));
     newprocess->pid = process;
 
@@ -456,7 +463,7 @@ void execute_program(char* program,char* args[], int background){
     if(background){
         printf("[%d]\n",childpid);
 
-        add_process(childpid);
+        add_bgprocess(childpid);
         foregroundProcess = -1;
         options |= WNOHANG;
     }
@@ -467,6 +474,147 @@ void execute_program(char* program,char* args[], int background){
     waitpid(childpid,NULL,options);
 }
 
-void execute_programs(char** args[], int redirectionCount, int background){
-    printf("test\n");
+void execute_programs(char*** args_separated, int* redirections, int redirectionCount, int background)
+{
+    // Check if args_separated and redirections arrays are empty
+    if (redirectionCount == 0)
+    {
+        // Execute the command with the given arguments and background flag
+        execvp(args_separated[0][0], args_separated[0]);
+        perror("Error executing command");
+        exit(1);
+    }
+
+    // Create pipes for the number of programs that need to be executed
+    int pipes[redirectionCount - 1][2];
+    for (int i = 0; i < redirectionCount - 1; i++)
+    {
+        if (pipe(pipes[i]) < 0)
+        {
+            perror("Error creating pipes");
+            exit(1);
+        }
+    }
+
+    // Iterate through each program
+    for (int i = 0; i < redirectionCount; i++)
+    {
+        // Fork a new process
+        pid_t pid = fork();
+
+        if (pid < 0)
+        {
+            perror("Error forking process");
+            exit(1);
+        }
+        else if (pid == 0)
+        {
+            // In the child process, set up the redirections as needed
+            if (i > 0)
+            {
+                // Set the standard input to the output of the previous program
+                if (dup2(pipes[i - 1][0], STDIN_FILENO) < 0)
+                {
+                    perror("Error redirecting standard input");
+                    exit(1);
+                }
+            }
+
+            if (i < redirectionCount - 1)
+            {
+                // Set the standard output to the input of the next program
+                if (dup2(pipes[i][1], STDOUT_FILENO) < 0)
+                {
+                    perror("Error redirecting standard output");
+                    exit(1);
+                }
+            }
+
+            // Close all pipes
+            for (int j = 0; j < redirectionCount - 1; j++)
+            {
+                close(pipes[j][0]);
+                close(pipes[j][1]);
+            }
+
+            // Handle redirection to/from files
+            int fd;
+            switch (redirections[i])
+            {
+                case LEFT_REDIRECTION:
+                    fd = open(args_separated[i + 1][0], O_RDONLY);
+                    if (fd < 0)
+                    {
+                        perror("Error opening file for reading");
+                        exit(1);
+                    }
+                    if (dup2(fd, STDIN_FILENO) < 0)
+                    {
+                        perror("Error redirecting standard input");
+                        exit(1);
+                    }
+                                        break;
+                case LEFT_REDIRECTION_APPEND:
+                    fd = open(args_separated[i + 1][0], O_RDONLY | O_APPEND);
+                    if (fd < 0)
+                    {
+                        perror("Error opening file for reading");
+                        exit(1);
+                    }
+                    if (dup2(fd, STDIN_FILENO) < 0)
+                    {
+                        perror("Error redirecting standard input");
+                        exit(1);
+                    }
+                    break;
+                case RIGHT_REDIRECTION:
+                    fd = open(args_separated[i + 1][0], O_CREAT | O_WRONLY | O_TRUNC, 0644);
+                    if (fd < 0)
+                    {
+                        perror("Error opening file for writing");
+                        exit(1);
+                    }
+                    if (dup2(fd, STDOUT_FILENO) < 0)
+                    {
+                        perror("Error redirecting standard output");
+                        exit(1);
+                    }
+                    break;
+                case RIGHT_REDIRECTION_APPEND:
+                    fd = open(args_separated[i + 1][0], O_CREAT | O_WRONLY | O_APPEND, 0644);
+                    if (fd < 0)
+                    {
+                        perror("Error opening file for writing");
+                        exit(1);
+                    }
+                    if (dup2(fd, STDOUT_FILENO) < 0)
+                    {
+                        perror("Error redirecting standard output");
+                        exit(1);
+                    }
+                    break;
+            }
+
+            // Execute the command with the given arguments and background flag
+            execvp(args_separated[i][0], args_separated[i]);
+            perror("Error executing command");
+            exit(1);
+        }
+    }
+
+    // In the parent process, close all pipes
+    for (int i = 0; i < redirectionCount - 1; i++)
+    {
+        close(pipes[i][0]);
+        close(pipes[i][1]);
+    }
+
+    // If the command is not running in the background, wait for all child processes to finish
+    if (!background)
+    {
+        for (int i = 0; i < redirectionCount; i++)
+        {
+            wait(NULL);
+        }
+    }
 }
